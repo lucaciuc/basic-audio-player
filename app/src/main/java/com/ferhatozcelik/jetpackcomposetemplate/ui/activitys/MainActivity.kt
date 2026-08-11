@@ -138,6 +138,7 @@ fun AudioPlayerScreen(audioFiles: List<AudioFile>) {
         val listener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 currentSongIndex = mediaController?.currentMediaItemIndex ?: -1
+                currentPosition = 0L // Reset position on track change
             }
 
             override fun onIsPlayingChanged(isPlayingState: Boolean) {
@@ -151,24 +152,6 @@ fun AudioPlayerScreen(audioFiles: List<AudioFile>) {
             mediaController?.removeListener(listener)
         }
     }
-
-    // Update the progress slider
-    LaunchedEffect(isPlaying) {
-        while (isPlaying) {
-            mediaController?.let {
-                currentPosition = it.currentPosition
-                totalDuration = it.duration.coerceAtLeast(0L)
-            }
-            delay(1000L)
-        }
-    }
-
-    // Smooth animated slider
-    val animatedPosition by animateFloatAsState(
-        targetValue = currentPosition.toFloat(),
-        animationSpec = tween(durationMillis = 1000, easing = LinearEasing),
-        label = "progress_anim"
-    )
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Track List
@@ -210,55 +193,96 @@ fun AudioPlayerScreen(audioFiles: List<AudioFile>) {
         }
 
         // Playback Controls
-        Surface(
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column {
-                Slider(
-                    value = if (totalDuration > 0) animatedPosition / totalDuration.toFloat() else 0f,
-                    onValueChange = { newPercent ->
-                        val newPosition = (newPercent * totalDuration).toLong()
-                        mediaController?.seekTo(newPosition)
-                        currentPosition = newPosition
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp)
-                        .padding(top = 8.dp)
-                )
+        if (mediaController != null) {
+            PlaybackControls(
+                mediaController = mediaController!!,
+                isPlaying = isPlaying,
+                currentPosition = currentPosition,
+                totalDuration = totalDuration,
+                onPositionChange = { newPos -> currentPosition = newPos },
+                onDurationChange = { newDur -> totalDuration = newDur }
+            )
+        }
+    }
+}
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = { mediaController?.seekToPreviousMediaItem() }) {
-                        Icon(Icons.Default.SkipPrevious, contentDescription = "Previous")
-                    }
+@Composable
+fun PlaybackControls(
+    mediaController: MediaController,
+    isPlaying: Boolean,
+    currentPosition: Long,
+    totalDuration: Long,
+    onPositionChange: (Long) -> Unit,
+    onDurationChange: (Long) -> Unit
+) {
+    // Update the progress slider
+    LaunchedEffect(isPlaying) {
+        while (isPlaying) {
+            onPositionChange(mediaController.currentPosition)
+            onDurationChange(mediaController.duration.coerceAtLeast(0L))
+            delay(1000L)
+        }
+    }
 
-                    FloatingActionButton(onClick = {
-                        mediaController?.let { controller ->
-                            if (controller.isPlaying) {
-                                controller.pause()
-                            } else {
-                                controller.play()
-                            }
-                        }
-                    }) {
-                        Crossfade(targetState = isPlaying, label = "play_pause") { playing ->
-                            Icon(
-                                imageVector = if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (playing) "Pause" else "Play"
-                            )
-                        }
-                    }
+    // Smooth animated slider
+    val animatedPosition by animateFloatAsState(
+        targetValue = currentPosition.toFloat(),
+        animationSpec = tween(durationMillis = 1000, easing = LinearEasing),
+        label = "progress_anim"
+    )
 
-                    IconButton(onClick = { mediaController?.seekToNextMediaItem() }) {
-                        Icon(Icons.Default.SkipNext, contentDescription = "Next")
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column {
+            Slider(
+                value = if (totalDuration > 0) animatedPosition / totalDuration.toFloat() else 0f,
+                onValueChange = { newPercent ->
+                    val newPosition = (newPercent * totalDuration).toLong()
+                    mediaController.seekTo(newPosition)
+                    onPositionChange(newPosition)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(top = 8.dp)
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = {
+                    mediaController.seekToPreviousMediaItem()
+                    mediaController.play()
+                }) {
+                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous")
+                }
+
+                FloatingActionButton(onClick = {
+                    if (mediaController.isPlaying) {
+                        mediaController.pause()
+                    } else {
+                        mediaController.play()
                     }
+                }) {
+                    Crossfade(targetState = isPlaying, label = "play_pause") { playing ->
+                        Icon(
+                            imageVector = if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (playing) "Pause" else "Play"
+                        )
+                    }
+                }
+
+                IconButton(onClick = {
+                    mediaController.seekToNextMediaItem()
+                    mediaController.play()
+                }) {
+                    Icon(Icons.Default.SkipNext, contentDescription = "Next")
                 }
             }
         }
