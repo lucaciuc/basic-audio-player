@@ -12,22 +12,46 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
@@ -48,7 +72,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    LocalAudioPlayerApp()
+                    AudioPlayerRoot()
                 }
             }
         }
@@ -56,242 +80,266 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun LocalAudioPlayerApp() {
+fun AudioPlayerRoot() {
     val context = LocalContext.current
-    var audioFiles by remember { mutableStateOf<List<AudioFile>>(emptyList()) }
+    var audioFiles by remember { mutableStateOf(emptyList<AudioFile>()) }
     var hasPermission by remember { mutableStateOf(false) }
 
-    val permissionToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
     } else {
         Manifest.permission.READ_EXTERNAL_STORAGE
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { isGranted ->
-            hasPermission = isGranted
-            if (isGranted) {
-                audioFiles = fetchAudioFiles(context)
-            }
-        }
-    )
-
-    LaunchedEffect(Unit) {
-        permissionLauncher.launch(permissionToRequest)
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasPermission = granted
+        if (granted) audioFiles = fetchAudioFiles(context)
     }
 
-    if (hasPermission) {
-        AudioPlayerScreen(audioFiles = audioFiles)
-    } else {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Storage permission is required to find audio files.")
+    LaunchedEffect(Unit) { launcher.launch(permission) }
+
+    if (!hasPermission) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Storage permission required.")
         }
+        return
     }
-}
 
-@Composable
-fun AudioPlayerScreen(audioFiles: List<AudioFile>) {
-    val context = LocalContext.current
-    var mediaController by remember { mutableStateOf<MediaController?>(null) }
+    // All player state lives here, passed down as primitives
+    var controller by remember { mutableStateOf<MediaController?>(null) }
+    var currentIndex by remember { mutableIntStateOf(-1) }
+    var playing by remember { mutableStateOf(false) }
 
-    var currentSongIndex by remember { mutableStateOf(-1) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var currentPosition by remember { mutableStateOf(0L) }
-    var totalDuration by remember { mutableStateOf(0L) }
-
-    // Connect to the background MediaSessionService
+    // Connect once
     LaunchedEffect(Unit) {
-        val sessionToken = SessionToken(context, ComponentName(context, AudioPlayerService::class.java))
-        val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
-
-        controllerFuture.addListener(
-            { mediaController = controllerFuture.get() },
+        val token = SessionToken(context, ComponentName(context, AudioPlayerService::class.java))
+        val future = MediaController.Builder(context, token).buildAsync()
+        future.addListener(
+            { controller = future.get() },
             ContextCompat.getMainExecutor(context)
         )
     }
 
-    // Load files into the controller
-    LaunchedEffect(mediaController, audioFiles) {
-        val controller = mediaController ?: return@LaunchedEffect
-
-        if (audioFiles.isNotEmpty() && controller.mediaItemCount == 0) {
-            val mediaItems = audioFiles.map { file ->
-                val metadata = MediaMetadata.Builder()
-                    .setTitle(file.name)
-                    .setSubtitle("Type: ${file.extension}")
-                    .build()
-
+    // Load tracks once
+    LaunchedEffect(controller, audioFiles) {
+        val ctrl = controller ?: return@LaunchedEffect
+        if (audioFiles.isNotEmpty() && ctrl.mediaItemCount == 0) {
+            ctrl.setMediaItems(audioFiles.map { file ->
                 MediaItem.Builder()
                     .setUri(file.uri)
-                    .setMediaMetadata(metadata)
+                    .setMediaMetadata(
+                        MediaMetadata.Builder().setTitle(file.name).build()
+                    )
                     .build()
-            }
-
-            controller.setMediaItems(mediaItems)
-            controller.prepare()
+            })
+            ctrl.prepare()
         }
     }
 
-    // React to player state changes
-    DisposableEffect(mediaController) {
+    // Listen to player events — only update index and playing state
+    DisposableEffect(controller) {
         val listener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                currentSongIndex = mediaController?.currentMediaItemIndex ?: -1
-                currentPosition = 0L // Reset position on track change
+                currentIndex = controller?.currentMediaItemIndex ?: -1
             }
-
-            override fun onIsPlayingChanged(isPlayingState: Boolean) {
-                isPlaying = isPlayingState
+            override fun onIsPlayingChanged(isNowPlaying: Boolean) {
+                playing = isNowPlaying
             }
         }
-
-        mediaController?.addListener(listener)
-
-        onDispose {
-            mediaController?.removeListener(listener)
-        }
+        controller?.addListener(listener)
+        onDispose { controller?.removeListener(listener) }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Track List
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            itemsIndexed(
-                items = audioFiles,
-                key = { _, file -> file.id }
-            ) { index, file ->
-                val isSelected = index == currentSongIndex
-                
-                val scale by animateFloatAsState(
-                    targetValue = if (isSelected) 1.02f else 1f,
-                    animationSpec = tween(300),
-                    label = "scale_anim"
-                )
+    // UI — the list never recomposes from slider updates
+    Column(Modifier.fillMaxSize()) {
+        TrackList(
+            files = audioFiles,
+            currentIndex = currentIndex,
+            onTrackClick = { index ->
+                controller?.seekTo(index, 0L)
+                controller?.play()
+            },
+            modifier = Modifier.weight(1f)
+        )
 
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .scale(scale)
-                        .clickable {
-                            mediaController?.seekTo(index, 0L)
-                            mediaController?.play()
-                        }
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(text = file.name, style = MaterialTheme.typography.bodyLarge)
-                        Text(text = "Type: ${file.extension}", style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
-
-        // Playback Controls
-        if (mediaController != null) {
-            PlaybackControls(
-                mediaController = mediaController!!,
-                isPlaying = isPlaying,
-                currentPosition = currentPosition,
-                totalDuration = totalDuration,
-                onPositionChange = { newPos -> currentPosition = newPos },
-                onDurationChange = { newDur -> totalDuration = newDur }
+        controller?.let { ctrl ->
+            PlayerBar(
+                controller = ctrl,
+                isPlaying = playing
             )
         }
     }
 }
 
+// ── Track List ─────────────────────────────────────────────────────
+// This composable only recomposes when currentIndex changes.
+// The slider state is completely isolated in PlayerBar.
+
 @Composable
-fun PlaybackControls(
-    mediaController: MediaController,
-    isPlaying: Boolean,
-    currentPosition: Long,
-    totalDuration: Long,
-    onPositionChange: (Long) -> Unit,
-    onDurationChange: (Long) -> Unit
+fun TrackList(
+    files: List<AudioFile>,
+    currentIndex: Int,
+    onTrackClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    // Update the progress slider
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        items(
+            items = files,
+            key = { it.id }
+        ) { file ->
+            val index = files.indexOf(file)
+            val selected = index == currentIndex
+
+            Surface(
+                color = if (selected)
+                    MaterialTheme.colorScheme.primaryContainer
+                else
+                    MaterialTheme.colorScheme.surface,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onTrackClick(index) }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = file.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = file.extension.uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Player Bar ─────────────────────────────────────────────────────
+// This composable manages its OWN slider state internally.
+// Nothing it does causes the list above to recompose.
+
+@Composable
+fun PlayerBar(
+    controller: MediaController,
+    isPlaying: Boolean
+) {
+    // Slider state is local to this composable — isolated from the rest
+    var sliderPosition by remember { mutableFloatStateOf(0f) }
+    var duration by remember { mutableLongStateOf(0L) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    // Poll position only while playing, at a reasonable rate
     LaunchedEffect(isPlaying) {
         while (isPlaying) {
-            onPositionChange(mediaController.currentPosition)
-            onDurationChange(mediaController.duration.coerceAtLeast(0L))
-            delay(1000L)
+            if (!isDragging) {
+                val dur = controller.duration.coerceAtLeast(1L)
+                duration = dur
+                sliderPosition = controller.currentPosition.toFloat() / dur.toFloat()
+            }
+            delay(250L)
+        }
+        // When paused, sync one final time
+        if (!isDragging) {
+            val dur = controller.duration.coerceAtLeast(1L)
+            duration = dur
+            sliderPosition = controller.currentPosition.toFloat() / dur.toFloat()
         }
     }
 
-    // Smooth animated slider
-    val animatedPosition by animateFloatAsState(
-        targetValue = currentPosition.toFloat(),
-        animationSpec = tween(durationMillis = 1000, easing = LinearEasing),
-        label = "progress_anim"
-    )
+    // Reset slider on track change
+    DisposableEffect(controller) {
+        val listener = object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                sliderPosition = 0f
+                duration = 0L
+            }
+        }
+        controller.addListener(listener)
+        onDispose { controller.removeListener(listener) }
+    }
 
     Surface(
-        color = MaterialTheme.colorScheme.secondaryContainer,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column {
+        Column(modifier = Modifier.padding(top = 4.dp)) {
             Slider(
-                value = if (totalDuration > 0) animatedPosition / totalDuration.toFloat() else 0f,
-                onValueChange = { newPercent ->
-                    val newPosition = (newPercent * totalDuration).toLong()
-                    mediaController.seekTo(newPosition)
-                    onPositionChange(newPosition)
+                value = sliderPosition.coerceIn(0f, 1f),
+                onValueChange = {
+                    isDragging = true
+                    sliderPosition = it
+                },
+                onValueChangeFinished = {
+                    controller.seekTo((sliderPosition * duration).toLong())
+                    isDragging = false
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .padding(top = 8.dp)
+                    .padding(horizontal = 20.dp)
             )
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp, start = 16.dp, end = 16.dp),
+                    .padding(bottom = 12.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = {
-                    mediaController.seekToPreviousMediaItem()
-                    mediaController.play()
+                    controller.seekToPreviousMediaItem()
+                    controller.play()
                 }) {
-                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous")
+                    Icon(Icons.Default.SkipPrevious, "Previous", Modifier.size(28.dp))
                 }
 
-                FloatingActionButton(onClick = {
-                    if (mediaController.isPlaying) {
-                        mediaController.pause()
-                    } else {
-                        mediaController.play()
-                    }
-                }) {
-                    Crossfade(targetState = isPlaying, label = "play_pause") { playing ->
-                        Icon(
-                            imageVector = if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (playing) "Pause" else "Play"
-                        )
-                    }
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                        .clickable {
+                            if (controller.isPlaying) controller.pause()
+                            else controller.play()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(32.dp)
+                    )
                 }
 
                 IconButton(onClick = {
-                    mediaController.seekToNextMediaItem()
-                    mediaController.play()
+                    controller.seekToNextMediaItem()
+                    controller.play()
                 }) {
-                    Icon(Icons.Default.SkipNext, contentDescription = "Next")
+                    Icon(Icons.Default.SkipNext, "Next", Modifier.size(28.dp))
                 }
             }
         }
     }
 }
 
-// MediaStore Query
+// ── MediaStore Query ───────────────────────────────────────────────
+
 fun fetchAudioFiles(context: Context): List<AudioFile> {
-    val fileList = mutableListOf<AudioFile>()
+    val list = mutableListOf<AudioFile>()
 
     val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
@@ -305,30 +353,24 @@ fun fetchAudioFiles(context: Context): List<AudioFile> {
         MediaStore.Audio.Media.MIME_TYPE
     )
 
-    val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
-
     context.contentResolver.query(
         collection,
         projection,
-        selection,
+        "${MediaStore.Audio.Media.IS_MUSIC} != 0",
         null,
         "${MediaStore.Audio.Media.DISPLAY_NAME} ASC"
     )?.use { cursor ->
-        val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-        val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
-        val mimeTypeColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
+        val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+        val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
+        val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
 
         while (cursor.moveToNext()) {
-            val id = cursor.getLong(idColumn)
-            val name = cursor.getString(nameColumn)
-            val mimeType = cursor.getString(mimeTypeColumn)
-
-            val extension = mimeType.substringAfterLast("/", "unknown")
-            val contentUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
-
-            fileList.add(AudioFile(id, name, extension, contentUri))
+            val id = cursor.getLong(idCol)
+            val name = cursor.getString(nameCol)
+            val ext = cursor.getString(mimeCol).substringAfterLast("/", "unknown")
+            val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
+            list.add(AudioFile(id, name, ext, uri))
         }
     }
-
-    return fileList
+    return list
 }
