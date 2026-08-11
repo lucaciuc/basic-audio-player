@@ -201,7 +201,8 @@ fun AudioPlayerScreen(audioFiles: List<AudioFile>) {
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, top = 8.dp)
+                        .padding(horizontal = 24.dp)
+                        .padding(top = 8.dp)
                 )
 
                 Row(
