@@ -12,6 +12,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,6 +26,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -158,6 +163,13 @@ fun AudioPlayerScreen(audioFiles: List<AudioFile>) {
         }
     }
 
+    // Smooth animated slider
+    val animatedPosition by animateFloatAsState(
+        targetValue = currentPosition.toFloat(),
+        animationSpec = tween(durationMillis = 1000, easing = LinearEasing),
+        label = "progress_anim"
+    )
+
     Column(modifier = Modifier.fillMaxSize()) {
         // Track List
         LazyColumn(
@@ -165,14 +177,25 @@ fun AudioPlayerScreen(audioFiles: List<AudioFile>) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            itemsIndexed(audioFiles) { index, file ->
+            itemsIndexed(
+                items = audioFiles,
+                key = { _, file -> file.id }
+            ) { index, file ->
                 val isSelected = index == currentSongIndex
+                
+                val scale by animateFloatAsState(
+                    targetValue = if (isSelected) 1.02f else 1f,
+                    animationSpec = tween(300),
+                    label = "scale_anim"
+                )
+
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .scale(scale)
                         .clickable {
                             mediaController?.seekTo(index, 0L)
                             mediaController?.play()
@@ -193,7 +216,7 @@ fun AudioPlayerScreen(audioFiles: List<AudioFile>) {
         ) {
             Column {
                 Slider(
-                    value = if (totalDuration > 0) currentPosition.toFloat() / totalDuration.toFloat() else 0f,
+                    value = if (totalDuration > 0) animatedPosition / totalDuration.toFloat() else 0f,
                     onValueChange = { newPercent ->
                         val newPosition = (newPercent * totalDuration).toLong()
                         mediaController?.seekTo(newPosition)
@@ -225,10 +248,12 @@ fun AudioPlayerScreen(audioFiles: List<AudioFile>) {
                             }
                         }
                     }) {
-                        Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play"
-                        )
+                        Crossfade(targetState = isPlaying, label = "play_pause") { playing ->
+                            Icon(
+                                imageVector = if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (playing) "Pause" else "Play"
+                            )
+                        }
                     }
 
                     IconButton(onClick = { mediaController?.seekToNextMediaItem() }) {

@@ -28,11 +28,12 @@ jobs:
         id: slug
         run: echo "sha8=$(echo ${GITHUB_SHA} | cut -c1-8)" >> $GITHUB_OUTPUT
       - name: Rename APK
-        run: mv app/build/outputs/apk/debug/app-debug.apk BasicAudioPlayer-Release-${{ steps.slug.outputs.sha8 }}.apk
+        run: mv app/build/outputs/apk/debug/app-debug.apk BasicAudioPlayer-Latest.apk
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: release-${{ steps.slug.outputs.sha8 }}
-          name: Release ${{ steps.slug.outputs.sha8 }}
-          files: BasicAudioPlayer-Release-${{ steps.slug.outputs.sha8 }}.apk
-          generate_release_notes: true
+          tag_name: latest
+          name: Latest Release
+          files: BasicAudioPlayer-Latest.apk
+          generate_release_notes: false
+          body: "The latest compiled APK."

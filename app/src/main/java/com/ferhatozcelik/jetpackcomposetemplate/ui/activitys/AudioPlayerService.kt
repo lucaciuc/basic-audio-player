@@ -20,6 +20,12 @@ class AudioPlayerService : MediaSessionService() {
         return mediaSession
     }
 
+    override fun onTaskRemoved(rootIntent: android.content.Intent?) {
+        super.onTaskRemoved(rootIntent)
+        player.stop()
+        stopSelf()
+    }
+
     override fun onDestroy() {
         // Safely release hardware resources when killed
         mediaSession?.run {
