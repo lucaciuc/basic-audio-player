@@ -1,45 +1,24 @@
-# Jetpack Compose Template
+# Basic Audio Player
 
-Welcome to the Jetpack Compose Template! This template provides a structured starting point for building Android applications using the Jetpack Compose UI toolkit. Jetpack Compose simplifies UI development with a declarative approach, allowing you to create interactive and beautiful UIs with less code.
+A simple, lightweight Android audio player built with Jetpack Compose and Media3 (ExoPlayer). It plays local audio files seamlessly in the background.
 
-## Project Overview
+## What it does
+- Scans your device for local audio files (MP3s, FLACs, whatever your phone supports)
+- Plays music in the background even when you minimize or close the app
+- Shows a clean, modern Material 3 UI with a progress slider and standard playback controls
+- Integrates directly with Android's system media notifications (so it shows up in your quick settings panel)
 
-This project demonstrates the use of Jetpack Compose to create a modern Android app with a clean and maintainable architecture.
+## How to use
+Just head over to the [Releases](../../releases) tab to grab the latest APK. Install it on your Android phone, grant the storage permission, and you're good to go. 
 
-### Key Components
+If you want to build it yourself from source:
+1. Clone the repo
+2. Open it in Android Studio
+3. Hit Run
 
-- **Jetpack Compose:** The modern UI toolkit for building native UIs.
-- **ViewModel:** Manage UI-related data and state using the ViewModel architecture component.
-- **Hilt:** Use Hilt for dependency injection, ensuring clean and modular code.
-- **Navigation Component:** Handle navigation between different screens seamlessly.
-- **Coroutines:** Utilize Kotlin's Coroutines for managing asynchronous tasks.
-- **Data Persistence:** Leverage Room for local data storage.
+## Tech Stack
+- Jetpack Compose (UI)
+- Jetpack Media3 / ExoPlayer (Audio engine)
+- MediaSessionService (Background playback)
 
-## Getting Started
-
-1. **Clone the Repository:** `git clone https://github.com/ferhatozcelik/jetpack-compose-template.git`
-2. **Open in Android Studio:** Import the project into Android Studio.
-3. **Build and Run:** Build and run the app to see the Jetpack Compose magic in action.
-
-## Project Structure
-
-- `app` module: Contains the main application code.
-  - `src/main/java or src/main/kotlin`: Kotlin source code.
-  - `src/main/res`: Resources like layouts, strings, and drawables.
-
-## Customize and Extend
-
-Feel free to customize and extend this template to match the requirements of your specific project. Experiment with different Composables, UI layouts, and navigation flows to create your unique app.
-
-## Author
-
-👤 Your Name
-
-- GitHub: [@ferhatozcelik](https://github.com/ferhatozcelik)
-- LinkedIn: [Ferhat OZCELIK](https://www.linkedin.com/in/ferhatozcelik/)
-
-## License
-
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
-
-If you find this template helpful, please consider giving it a ⭐️ on GitHub. Your support is greatly appreciated!
+*Built as a quick proof-of-concept for Media3 background audio.*
