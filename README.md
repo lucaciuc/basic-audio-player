@@ -10,14 +10,14 @@ The application utilizes a unidirectional data flow architecture, strictly separ
 
 ```mermaid
 graph TD
-    A[MediaStore / Storage] -->|Dispatchers.IO| B(AudioViewModel)
-    B -->|StateFlow| C{MainActivity}
-    C -->|@JvmInline Data| D[LazyColumn UI]
-    C -->|SessionToken| E(AudioPlayerService)
-    E -->|Hardware Offload| F[ExoPlayer / Media3]
-    F -->|Raw Audio Session| G[DSP Equalizer / BassBoost]
-    F -->|Time Updates| H(derivedStateOf PlayerBar)
-    H -.->|GPU Draw Phase| I[Screen]
+    A["MediaStore / Storage"] -->|"Dispatchers.IO"| B["AudioViewModel"]
+    B -->|"StateFlow"| C["MainActivity"]
+    C -->|"@JvmInline Data"| D["LazyColumn UI"]
+    C -->|"SessionToken"| E["AudioPlayerService"]
+    E -->|"Hardware Offload"| F["ExoPlayer / Media3"]
+    F -->|"Raw Audio Session"| G["DSP Equalizer / BassBoost"]
+    F -->|"Time Updates"| H["derivedStateOf PlayerBar"]
+    H -.->|"GPU Draw Phase"| I["Screen"]
 ```
 
 ---
