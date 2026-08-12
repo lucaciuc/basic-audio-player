@@ -137,6 +137,10 @@ fun AudioPlayerRoot() {
             override fun onIsPlayingChanged(isNowPlaying: Boolean) {
                 playing = isNowPlaying
             }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                val msg = "Error: ${error.errorCodeName}\nMsg: ${error.message}"
+                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+            }
         }
         controller?.addListener(listener)
         onDispose { controller?.removeListener(listener) }
