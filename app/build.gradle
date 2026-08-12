@@ -66,7 +66,7 @@ dependencies {
     implementation(libs.lifecycle.runtime.ktx)
 
     // Jetpack Media3 for background audio
-    def media3Version = "1.4.1"
+    def media3Version = "1.8.0"
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-common:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")
