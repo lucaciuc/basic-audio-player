@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -76,10 +77,13 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AudioPlayerRoot() {
+fun AudioPlayerRoot(viewModel: AudioViewModel = viewModel()) {
     val context = LocalContext.current
-    var audioFiles by remember { mutableStateOf(emptyList<AudioFile>()) }
     var hasPermission by remember { mutableStateOf(false) }
+
+    // Phase 1: Observe audio files from ViewModel StateFlow (background-loaded)
+    val audioFiles by viewModel.audioFiles.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
 
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -91,7 +95,7 @@ fun AudioPlayerRoot() {
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasPermission = granted
-        if (granted) audioFiles = fetchAudioFiles(context)
+        if (granted) viewModel.loadAudioFiles()
     }
 
     LaunchedEffect(Unit) { launcher.launch(permission) }
@@ -99,6 +103,14 @@ fun AudioPlayerRoot() {
     if (!hasPermission) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Storage permission required.")
+        }
+        return
+    }
+
+    // Show loading indicator while ViewModel is fetching files
+    if (isLoading && audioFiles.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
         }
         return
     }
@@ -224,7 +236,7 @@ fun TrackListItem(
     }
 }
 
-// ── Isolated Player Bar ────────────────────────────────────────────
+// ── Phase 2: Phase-Deferred Player Bar (Zero Recomposition Slider) ─
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun PlayerBar(
@@ -260,19 +272,23 @@ fun PlayerBar(
     }
 
     // This smooths out the 250ms polling jumps without touching the playlist
-    val animatedPosition by animateFloatAsState(
+    val animatedPositionValue by animateFloatAsState(
         targetValue = rawPosition,
         animationSpec = tween(if (isPlaying && !isDragging) 250 else 0),
         label = "slider_anim"
     )
+
+    // Phase 2: derivedStateOf defers this calculation to the Drawing phase only.
+    // Compose skips the Composition phase entirely when only the slider value changes.
+    val progress by remember {
+        derivedStateOf { (animatedPositionValue / duration).coerceIn(0f, 1f) }
+    }
 
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(top = 8.dp)) {
-            val progress = (animatedPosition / duration).coerceIn(0f, 1f)
-
             Slider(
                 value = progress,
                 onValueChange = { percent ->
@@ -337,7 +353,7 @@ fun PlayerBar(
     }
 }
 
-// ── MediaStore Query ───────────────────────────────────────────────
+// ── MediaStore Query (kept for legacy reference, ViewModel uses its own) ──
 fun fetchAudioFiles(context: Context): List<AudioFile> {
     val list = mutableListOf<AudioFile>()
     val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
