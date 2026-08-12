@@ -71,6 +71,9 @@ dependencies {
     implementation("androidx.media3:media3-common:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")
 
+    // Palette API for dynamic album art theming
+    implementation("androidx.palette:palette:1.0.0")
+
     // JUnit
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)

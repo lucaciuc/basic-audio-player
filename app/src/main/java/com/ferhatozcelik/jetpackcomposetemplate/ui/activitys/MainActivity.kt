@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.ComponentName
 import android.content.ContentUris
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,6 +16,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -33,17 +36,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import androidx.palette.graphics.Palette
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Immutable
 data class AudioFile(val id: Long, val name: String, val extension: String, val uri: Uri)
@@ -53,23 +62,36 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            // Material 3 Dynamic Theme
-            val dynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-            val colors = if (dynamicColor) {
-                dynamicDarkColorScheme(LocalContext.current)
-            } else {
-                darkColorScheme(
-                    primary = androidx.compose.ui.graphics.Color(0xFF90CAF9),
-                    surface = androidx.compose.ui.graphics.Color(0xFF111111)
-                )
-            }
+            // Phase 3: Dynamic accent color extracted from album art
+            var accentColor by remember { mutableStateOf(Color(0xFF90CAF9)) }
+
+            // Smooth animated color transitions when the track changes
+            val animPrimary by animateColorAsState(
+                targetValue = accentColor,
+                animationSpec = tween(durationMillis = 800),
+                label = "primary_color_anim"
+            )
+            val animPrimaryContainer by animateColorAsState(
+                targetValue = accentColor.copy(alpha = 0.3f),
+                animationSpec = tween(durationMillis = 800),
+                label = "primary_container_anim"
+            )
+
+            val colors = darkColorScheme(
+                primary = animPrimary,
+                primaryContainer = animPrimaryContainer,
+                onPrimaryContainer = Color.White,
+                surface = Color(0xFF111111),
+                background = Color(0xFF0A0A0A),
+                surfaceVariant = Color(0xFF1A1A1A)
+            )
 
             MaterialTheme(colorScheme = colors) {
                 Surface(
                     modifier = Modifier.fillMaxSize().systemBarsPadding(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    AudioPlayerRoot()
+                    AudioPlayerRoot(onAccentColorChanged = { accentColor = it })
                 }
             }
         }
@@ -77,7 +99,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AudioPlayerRoot(viewModel: AudioViewModel = viewModel()) {
+fun AudioPlayerRoot(
+    viewModel: AudioViewModel = viewModel(),
+    onAccentColorChanged: (Color) -> Unit = {}
+) {
     val context = LocalContext.current
     var hasPermission by remember { mutableStateOf(false) }
 
@@ -138,6 +163,42 @@ fun AudioPlayerRoot(viewModel: AudioViewModel = viewModel()) {
                     .build()
             })
             ctrl.prepare()
+        }
+    }
+
+    // Phase 3: Extract album art and compute accent color on track change
+    LaunchedEffect(currentIndex) {
+        if (currentIndex < 0 || currentIndex >= audioFiles.size) return@LaunchedEffect
+        val trackUri = audioFiles[currentIndex].uri
+        withContext(Dispatchers.IO) {
+            try {
+                val retriever = MediaMetadataRetriever()
+                retriever.setDataSource(context, trackUri)
+                val artBytes = retriever.embeddedPicture
+                retriever.release()
+                if (artBytes != null) {
+                    val bitmap = BitmapFactory.decodeByteArray(artBytes, 0, artBytes.size)
+                    if (bitmap != null) {
+                        val palette = Palette.from(bitmap).generate()
+                        val dominant = palette.getVibrantColor(
+                            palette.getMutedColor(0xFF90CAF9.toInt())
+                        )
+                        // Ensure the color is bright enough for a dark theme
+                        val hsl = FloatArray(3)
+                        ColorUtils.colorToHSL(dominant, hsl)
+                        hsl[1] = hsl[1].coerceAtLeast(0.4f)  // Minimum saturation
+                        hsl[2] = hsl[2].coerceIn(0.4f, 0.7f) // Brightness range for dark theme
+                        val adjusted = ColorUtils.HSLToColor(hsl)
+                        onAccentColorChanged(Color(adjusted))
+                        bitmap.recycle()
+                    }
+                } else {
+                    // No album art — reset to default blue
+                    onAccentColorChanged(Color(0xFF90CAF9))
+                }
+            } catch (_: Exception) {
+                onAccentColorChanged(Color(0xFF90CAF9))
+            }
         }
     }
 
