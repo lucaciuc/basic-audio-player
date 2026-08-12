@@ -74,6 +74,9 @@ dependencies {
     // Palette API for dynamic album art theming
     implementation("androidx.palette:palette:1.0.0")
 
+    // Profile Installer for Baseline Profile consumption
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+
     // JUnit
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
