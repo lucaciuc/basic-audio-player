@@ -29,6 +29,16 @@ class AudioPlayerService : MediaSessionService() {
             .setWakeMode(C.WAKE_MODE_LOCAL) 
             .build()
 
+        // Enable Hardware Audio Offload (Battery Saver)
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setAudioOffloadPreferences(
+                androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences.Builder()
+                    .setAudioOffloadMode(androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
+                    .build()
+            )
+            .build()
+
         mediaSession = MediaSession.Builder(this, player).build()
     }
 

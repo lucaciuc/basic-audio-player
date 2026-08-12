@@ -129,11 +129,6 @@ fun AudioPlayerRoot() {
         }
     }
 
-    var playbackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
-    var itemCount by remember { mutableIntStateOf(0) }
-    var playerErrorStr by remember { mutableStateOf<String?>(null) }
-    var playWhenReadyState by remember { mutableStateOf(false) }
-
     DisposableEffect(controller) {
         val listener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -142,42 +137,12 @@ fun AudioPlayerRoot() {
             override fun onIsPlayingChanged(isNowPlaying: Boolean) {
                 playing = isNowPlaying
             }
-            override fun onPlaybackStateChanged(playbackStateInt: Int) {
-                playbackState = playbackStateInt
-            }
-            override fun onPlayWhenReadyChanged(pwr: Boolean, reason: Int) {
-                playWhenReadyState = pwr
-            }
-            override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
-                itemCount = controller?.mediaItemCount ?: 0
-            }
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                playerErrorStr = "${error.errorCodeName}: ${error.message}"
-                android.widget.Toast.makeText(context, playerErrorStr, android.widget.Toast.LENGTH_LONG).show()
-            }
         }
         controller?.addListener(listener)
         onDispose { controller?.removeListener(listener) }
     }
 
     Column(Modifier.fillMaxSize()) {
-        // DEBUG BAR
-        if (controller != null) {
-            val stateName = when(playbackState) {
-                Player.STATE_IDLE -> "IDLE"
-                Player.STATE_BUFFERING -> "BUFFERING"
-                Player.STATE_READY -> "READY"
-                Player.STATE_ENDED -> "ENDED"
-                else -> "UNKNOWN"
-            }
-            Text(
-                text = "DEBUG | State: $stateName | Items: $itemCount | Playing: $playing | PWR: $playWhenReadyState\nErr: $playerErrorStr",
-                color = androidx.compose.ui.graphics.Color.Red,
-                modifier = Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Color.Black).padding(8.dp),
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
-
         TrackList(
             files = audioFiles,
             currentIndex = currentIndex,
