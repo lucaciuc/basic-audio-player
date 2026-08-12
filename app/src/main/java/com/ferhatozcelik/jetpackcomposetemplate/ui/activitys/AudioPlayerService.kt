@@ -1,18 +1,20 @@
 package com.ferhatozcelik.jetpackcomposetemplate.ui.activitys
 
+import android.media.audiofx.BassBoost
+import android.media.audiofx.Equalizer
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.TrackSelectionParameters
-import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 
 class AudioPlayerService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private lateinit var player: ExoPlayer
+    private var equalizer: Equalizer? = null
+    private var bassBoost: BassBoost? = null
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
     override fun onCreate() {
@@ -39,6 +41,31 @@ class AudioPlayerService : MediaSessionService() {
             )
             .build()
 
+        // Phase 4: Attach Equalizer and BassBoost to the audio session
+        player.addAnalyticsListener(object : AnalyticsListener {
+            override fun onAudioSessionIdChanged(
+                eventTime: AnalyticsListener.EventTime,
+                audioSessionId: Int
+            ) {
+                // Release previous instances to prevent leaks
+                releaseAudioEffects()
+                if (audioSessionId != 0) {
+                    try {
+                        equalizer = Equalizer(0, audioSessionId).apply {
+                            enabled = true
+                            // Apply a pleasant default - users can customize via UI
+                        }
+                        bassBoost = BassBoost(0, audioSessionId).apply {
+                            enabled = true
+                            setStrength(200) // Subtle bass enhancement (0-1000)
+                        }
+                    } catch (_: Exception) {
+                        // Some devices don't support audio effects
+                    }
+                }
+            }
+        })
+
         mediaSession = MediaSession.Builder(this, player).build()
     }
 
@@ -53,11 +80,21 @@ class AudioPlayerService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        releaseAudioEffects()
         mediaSession?.run {
             player.release()
             release()
             mediaSession = null
         }
         super.onDestroy()
+    }
+
+    private fun releaseAudioEffects() {
+        try {
+            equalizer?.release()
+            equalizer = null
+            bassBoost?.release()
+            bassBoost = null
+        } catch (_: Exception) { }
     }
 }
