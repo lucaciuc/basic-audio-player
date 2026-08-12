@@ -77,7 +77,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                 val name = c.getString(nameCol)
                 val ext = c.getString(mimeCol).substringAfterLast("/", "unknown").uppercase()
                 val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
-                list.add(AudioFile(id, name, ext, uri))
+                list.add(AudioFile(TrackId(id), name, ext, uri))
             }
         }
 

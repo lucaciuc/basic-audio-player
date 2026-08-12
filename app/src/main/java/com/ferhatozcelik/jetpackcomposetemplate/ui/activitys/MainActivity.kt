@@ -54,8 +54,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
+// Phase 7: Zero-allocation inline value class. At runtime, the Android VM
+// mathematically erases this wrapper and treats it as a raw Long primitive.
+// This eliminates object allocations for every track ID in the playlist.
+@JvmInline
+value class TrackId(val raw: Long)
+
 @Immutable
-data class AudioFile(val id: Long, val name: String, val extension: String, val uri: Uri)
+data class AudioFile(val id: TrackId, val name: String, val extension: String, val uri: Uri)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -247,7 +253,7 @@ fun TrackList(
     ) {
         itemsIndexed(
             items = files, 
-            key = { _, file -> file.id },
+            key = { _, file -> file.id.raw },
             contentType = { _, _ -> "track" }
         ) { index, file ->
             val selected = index == currentIndex
@@ -445,7 +451,7 @@ fun fetchAudioFiles(context: Context): List<AudioFile> {
             val name = cursor.getString(nameCol)
             val ext = cursor.getString(mimeCol).substringAfterLast("/", "unknown").uppercase()
             val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
-            list.add(AudioFile(id, name, ext, uri))
+            list.add(AudioFile(TrackId(id), name, ext, uri))
         }
     }
     return list

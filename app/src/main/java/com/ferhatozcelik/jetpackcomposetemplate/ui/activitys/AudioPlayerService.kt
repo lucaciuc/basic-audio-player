@@ -5,6 +5,7 @@ import android.media.audiofx.Equalizer
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.TrackSelectionParameters
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.session.MediaSession
@@ -26,10 +27,24 @@ class AudioPlayerService : MediaSessionService() {
             .setUsage(C.USAGE_MEDIA)
             .build()
 
-        player = ExoPlayer.Builder(this)
-            .setAudioAttributes(audioAttributes, true) // true = handle audio focus automatically
-            .setWakeMode(C.WAKE_MODE_LOCAL) 
+        // Phase 8: Gapless Playback - Configure LoadControl to aggressively
+        // pre-buffer the next track while the current one is still playing.
+        // back_buffer keeps decoded audio in RAM so seeking backwards is instant.
+        val loadControl = DefaultLoadControl.Builder()
+            .setBackBuffer(
+                /* backBufferDurationMs = */ 30_000,    // Keep 30s of played audio in RAM
+                /* retainBackBufferFromKeyframe = */ true
+            )
             .build()
+
+        player = ExoPlayer.Builder(this)
+            .setAudioAttributes(audioAttributes, true)
+            .setWakeMode(C.WAKE_MODE_LOCAL)
+            .setLoadControl(loadControl)
+            .build()
+
+        // Phase 8: Tell ExoPlayer to NOT pause between tracks (gapless)
+        player.pauseAtEndOfMediaItems = false
 
         // Enable Hardware Audio Offload (Battery Saver)
         player.trackSelectionParameters = player.trackSelectionParameters
