@@ -1,0 +1,6 @@
+# Baseline profile rules to precompile critical UI paths for Jetpack Compose
+com.ferhatozcelik.jetpackcomposetemplate.ui.activitys.MainActivity
+com.ferhatozcelik.jetpackcomposetemplate.ui.activitys.AudioPlayerRoot
+com.ferhatozcelik.jetpackcomposetemplate.ui.activitys.TrackList
+com.ferhatozcelik.jetpackcomposetemplate.ui.activitys.TrackListItem
+com.ferhatozcelik.jetpackcomposetemplate.ui.activitys.PlayerBar

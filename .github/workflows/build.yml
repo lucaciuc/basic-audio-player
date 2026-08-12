@@ -23,12 +23,12 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
       - name: Build APK
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleRelease
       - name: Get short SHA
         id: slug
         run: echo "sha8=$(echo ${GITHUB_SHA} | cut -c1-8)" >> $GITHUB_OUTPUT
       - name: Rename APK
-        run: mv app/build/outputs/apk/debug/app-debug.apk BasicAudioPlayer-Latest.apk
+        run: mv app/build/outputs/apk/release/app-release.apk BasicAudioPlayer-Latest.apk
       - name: Delete old release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -12,7 +12,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -21,8 +20,21 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -44,6 +56,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import kotlinx.coroutines.delay
 
+@Immutable
 data class AudioFile(val id: Long, val name: String, val extension: String, val uri: Uri)
 
 class MainActivity : ComponentActivity() {
@@ -64,7 +77,7 @@ class MainActivity : ComponentActivity() {
 
             MaterialTheme(colorScheme = colors) {
                 Surface(
-                    modifier = Modifier.fillMaxSize().systemBarsPadding(),
+                    modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
                     AudioPlayerRoot()
@@ -166,43 +179,65 @@ fun TrackList(
     onTrackClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val insetsPadding = WindowInsets.systemBars.asPaddingValues()
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(12.dp),
+        contentPadding = PaddingValues(
+            start = 12.dp, 
+            end = 12.dp, 
+            top = insetsPadding.calculateTopPadding() + 12.dp, 
+            bottom = insetsPadding.calculateBottomPadding() + 12.dp
+        ),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        itemsIndexed(items = files, key = { _, file -> file.id }) { index, file ->
+        itemsIndexed(
+            items = files, 
+            key = { _, file -> file.id },
+            contentType = { _, _ -> "track" }
+        ) { index, file ->
             val selected = index == currentIndex
-            
-            // Using Box instead of heavy Card/Surface for raw performance
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        if (selected) MaterialTheme.colorScheme.primaryContainer 
-                        else androidx.compose.ui.graphics.Color.Transparent
-                    )
-                    .clickable { onTrackClick(index) }
-                    .padding(horizontal = 16.dp, vertical = 14.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = file.name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        text = file.extension.uppercase(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha=0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 12.dp)
-                    )
-                }
-            }
+            TrackListItem(
+                file = file,
+                isSelected = selected,
+                onClick = { onTrackClick(index) }
+            )
+        }
+    }
+}
+
+@Composable
+fun TrackListItem(
+    file: AudioFile,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (isSelected) MaterialTheme.colorScheme.primaryContainer 
+                else androidx.compose.ui.graphics.Color.Transparent
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = file.name,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = file.extension,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha=0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 12.dp)
+            )
         }
     }
 }
@@ -349,7 +384,7 @@ fun fetchAudioFiles(context: Context): List<AudioFile> {
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
             val name = cursor.getString(nameCol)
-            val ext = cursor.getString(mimeCol).substringAfterLast("/", "unknown")
+            val ext = cursor.getString(mimeCol).substringAfterLast("/", "unknown").uppercase()
             val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
             list.add(AudioFile(id, name, ext, uri))
         }
