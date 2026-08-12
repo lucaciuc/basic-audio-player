@@ -132,6 +132,7 @@ fun AudioPlayerRoot() {
     var playbackState by remember { mutableIntStateOf(Player.STATE_IDLE) }
     var itemCount by remember { mutableIntStateOf(0) }
     var playerErrorStr by remember { mutableStateOf<String?>(null) }
+    var playWhenReadyState by remember { mutableStateOf(false) }
 
     DisposableEffect(controller) {
         val listener = object : Player.Listener {
@@ -143,6 +144,9 @@ fun AudioPlayerRoot() {
             }
             override fun onPlaybackStateChanged(playbackStateInt: Int) {
                 playbackState = playbackStateInt
+            }
+            override fun onPlayWhenReadyChanged(pwr: Boolean, reason: Int) {
+                playWhenReadyState = pwr
             }
             override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
                 itemCount = controller?.mediaItemCount ?: 0
@@ -167,7 +171,7 @@ fun AudioPlayerRoot() {
                 else -> "UNKNOWN"
             }
             Text(
-                text = "DEBUG | State: $stateName | Items: $itemCount | Playing: $playing \nErr: $playerErrorStr",
+                text = "DEBUG | State: $stateName | Items: $itemCount | Playing: $playing | PWR: $playWhenReadyState\nErr: $playerErrorStr",
                 color = androidx.compose.ui.graphics.Color.Red,
                 modifier = Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Color.Black).padding(8.dp),
                 style = MaterialTheme.typography.bodySmall

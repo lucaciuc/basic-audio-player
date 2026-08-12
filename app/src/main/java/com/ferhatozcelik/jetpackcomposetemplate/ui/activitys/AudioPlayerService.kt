@@ -24,34 +24,10 @@ class AudioPlayerService : MediaSessionService() {
             .setUsage(C.USAGE_MEDIA)
             .build()
 
-        // 2. Enable constant bitrate seeking for FLAC files without seek tables
-        val extractorsFactory = DefaultExtractorsFactory()
-            .setConstantBitrateSeekingEnabled(true)
-
-        // 3. Tuned buffer: start playback faster after seeking
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                15_000,  // min buffer
-                50_000,  // max buffer
-                1_500,   // buffer for playback (lower = faster resume after seek)
-                3_000    // buffer after rebuffer
-            )
-            .build()
-
-        val mediaSourceFactory = DefaultMediaSourceFactory(this, extractorsFactory)
-
         player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(mediaSourceFactory)
-            .setLoadControl(loadControl)
             .setAudioAttributes(audioAttributes, true) // true = handle audio focus automatically
-            .setWakeMode(C.WAKE_MODE_LOCAL) // Keeps CPU awake for local file playback when screen is off
+            .setWakeMode(C.WAKE_MODE_LOCAL) 
             .build()
-
-        // 4. Fast Scrubbing Mode (smooth seekbar dragging)
-        player.setScrubbingModeEnabled(true)
-
-        // 5. Hardware Audio Offload (Removed - Causes silent playback stalls on Samsung devices)
-        // Removed to fix playback bugs.
 
         mediaSession = MediaSession.Builder(this, player).build()
     }
