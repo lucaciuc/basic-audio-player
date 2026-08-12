@@ -1,10 +1,10 @@
 package com.ferhatozcelik.jetpackcomposetemplate.ui.activitys
 
-import android.os.Build
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.TrackSelectionParameters
+import androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences
 import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
@@ -25,15 +25,11 @@ class AudioPlayerService : MediaSessionService() {
             .setUsage(C.USAGE_MEDIA)
             .build()
 
-        // 2. Hardware Audio Offload (Battery Saver)
-        val renderersFactory = DefaultRenderersFactory(this)
-            .setEnableAudioOffload(true)
-
-        // 3. Enable constant bitrate seeking for FLAC files without seek tables
+        // 2. Enable constant bitrate seeking for FLAC files without seek tables
         val extractorsFactory = DefaultExtractorsFactory()
             .setConstantBitrateSeekingEnabled(true)
 
-        // 4. Tuned buffer: start playback faster after seeking
+        // 3. Tuned buffer: start playback faster after seeking
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 15_000,  // min buffer
@@ -45,19 +41,25 @@ class AudioPlayerService : MediaSessionService() {
 
         val mediaSourceFactory = DefaultMediaSourceFactory(this, extractorsFactory)
 
-        player = ExoPlayer.Builder(this, renderersFactory)
+        player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .setAudioAttributes(audioAttributes, true) // true = handle audio focus automatically
             .setWakeMode(C.WAKE_MODE_LOCAL) // Keeps CPU awake for local file playback when screen is off
             .build()
 
-        // 5. Fast Scrubbing Mode (smooth seekbar dragging)
+        // 4. Fast Scrubbing Mode (smooth seekbar dragging)
         player.setScrubbingModeEnabled(true)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            player.experimentalSetOffloadSchedulingEnabled(true) // Maximizes DSP offload efficiency
-        }
+        // 5. Hardware Audio Offload (Battery Saver - Modern Media3 API)
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setAudioOffloadPreferences(
+                AudioOffloadPreferences.Builder()
+                    .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
+                    .build()
+            )
+            .build()
 
         mediaSession = MediaSession.Builder(this, player).build()
     }
