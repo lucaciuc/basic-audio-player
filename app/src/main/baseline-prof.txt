@@ -1,5 +1,0 @@
-com.ferhatozcelik.jetpackcomposetemplate.ui.activitys.MainActivity
-com.ferhatozcelik.jetpackcomposetemplate.ui.activitys.AudioPlayerRoot
-com.ferhatozcelik.jetpackcomposetemplate.ui.activitys.TrackList
-com.ferhatozcelik.jetpackcomposetemplate.ui.activitys.TrackListItem
-com.ferhatozcelik.jetpackcomposetemplate.ui.activitys.PlayerBar
