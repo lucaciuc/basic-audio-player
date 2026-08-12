@@ -48,17 +48,22 @@ class AudioPlayerService : MediaSessionService() {
             .setWakeMode(C.WAKE_MODE_LOCAL) // Keeps CPU awake for local file playback when screen is off
             .build()
 
-        // (Fast Scrubbing Mode is only available in Media3 1.8.0+, so we omit it for Android 14 compatibility)
+        // 4. Fast Scrubbing Mode (smooth seekbar dragging)
+        player.setScrubbingModeEnabled(true)
 
         // 5. Hardware Audio Offload (Battery Saver - Modern Media3 API)
-        player.trackSelectionParameters = player.trackSelectionParameters
-            .buildUpon()
-            .setAudioOffloadPreferences(
-                AudioOffloadPreferences.Builder()
-                    .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
-                    .build()
-            )
-            .build()
+        try {
+            player.trackSelectionParameters = player.trackSelectionParameters
+                .buildUpon()
+                .setAudioOffloadPreferences(
+                    AudioOffloadPreferences.Builder()
+                        .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
+                        .build()
+                )
+                .build()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
 
         mediaSession = MediaSession.Builder(this, player).build()
     }

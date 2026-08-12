@@ -7,10 +7,11 @@ plugins {
     alias(libs.plugins.com.google.devtools.ksp) apply false
     // alias(libs.plugins.com.google.gms.google.services) apply false // Google Play Services
     // alias(libs.plugins.com.google.firebase.crashlytics) apply false // Google Play Services
+    alias(libs.plugins.compose.compiler) apply false
 }
 
 ext {
-    appCompileSdkVersion = 35
-    appTargetSdkVersion = 35
-    appMinSdkVersion = 21
+    appCompileSdkVersion = 36
+    appTargetSdkVersion = 36
+    appMinSdkVersion = 23
 }

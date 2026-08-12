@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.com.android.application)
     alias(libs.plugins.org.jetbrains.kotlin.android)
+    alias(libs.plugins.compose.compiler)
 }
 
 android {
@@ -33,9 +34,6 @@ android {
     buildFeatures {
         compose true
     }
-    composeOptions {
-        kotlinCompilerExtensionVersion '1.5.3'
-    }
 }
 
 dependencies {
@@ -66,7 +64,7 @@ dependencies {
     implementation(libs.lifecycle.runtime.ktx)
 
     // Jetpack Media3 for background audio
-    def media3Version = "1.8.0"
+    def media3Version = "1.11.0"
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-common:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")

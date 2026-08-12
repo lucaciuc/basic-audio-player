@@ -9,8 +9,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
@@ -49,6 +49,7 @@ data class AudioFile(val id: Long, val name: String, val extension: String, val 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent {
             // Material 3 Dynamic Theme
             val dynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -63,7 +64,7 @@ class MainActivity : ComponentActivity() {
 
             MaterialTheme(colorScheme = colors) {
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().systemBarsPadding(),
                     color = MaterialTheme.colorScheme.background
                 ) {
                     AudioPlayerRoot()
@@ -85,7 +86,7 @@ fun AudioPlayerRoot() {
         Manifest.permission.READ_EXTERNAL_STORAGE
     }
 
-    val launcher = rememberLauncherForActivityResult(
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasPermission = granted
