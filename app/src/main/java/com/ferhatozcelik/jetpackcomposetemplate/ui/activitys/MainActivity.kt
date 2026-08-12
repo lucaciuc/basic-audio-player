@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
 
             MaterialTheme(colorScheme = colors) {
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().systemBarsPadding(),
                     color = MaterialTheme.colorScheme.background
                 ) {
                     AudioPlayerRoot()
@@ -167,15 +167,9 @@ fun TrackList(
     onTrackClick: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val insetsPadding = WindowInsets.systemBars.asPaddingValues()
     LazyColumn(
         modifier = modifier,
-        contentPadding = PaddingValues(
-            start = 12.dp, 
-            end = 12.dp, 
-            top = insetsPadding.calculateTopPadding() + 12.dp, 
-            bottom = insetsPadding.calculateBottomPadding() + 12.dp
-        ),
+        contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         itemsIndexed(

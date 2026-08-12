@@ -3,7 +3,6 @@ package com.ferhatozcelik.jetpackcomposetemplate.ui.activitys
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.TrackSelectionParameters
-import androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -51,19 +50,8 @@ class AudioPlayerService : MediaSessionService() {
         // 4. Fast Scrubbing Mode (smooth seekbar dragging)
         player.setScrubbingModeEnabled(true)
 
-        // 5. Hardware Audio Offload (Battery Saver - Modern Media3 API)
-        try {
-            player.trackSelectionParameters = player.trackSelectionParameters
-                .buildUpon()
-                .setAudioOffloadPreferences(
-                    AudioOffloadPreferences.Builder()
-                        .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
-                        .build()
-                )
-                .build()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        // 5. Hardware Audio Offload (Removed - Causes silent playback stalls on Samsung devices)
+        // Removed to fix playback bugs.
 
         mediaSession = MediaSession.Builder(this, player).build()
     }
