@@ -1,3 +1,19 @@
 <resources>
     <string name="app_name">Basic Audio Player</string>
+    <string name="library_title">Music</string>
+    <plurals name="song_count">
+        <item quantity="one">%d song</item>
+        <item quantity="other">%d songs</item>
+    </plurals>
+    <string name="no_music">No music found on this device.</string>
+    <string name="permission_title">Allow access to your music</string>
+    <string name="permission_body">Basic Audio Player reads the audio files stored on this device. Nothing leaves your phone.</string>
+    <string name="permission_allow">Allow</string>
+    <string name="permission_settings">Open settings</string>
+    <string name="unknown_artist">Unknown artist</string>
+    <string name="play">Play</string>
+    <string name="pause">Pause</string>
+    <string name="next">Next</string>
+    <string name="previous">Previous</string>
+    <string name="seek">Playback position</string>
 </resources>

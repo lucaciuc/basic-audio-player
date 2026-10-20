@@ -1,143 +1,137 @@
-# Extreme Android Audio Player Optimization
+# Basic Audio Player
 
-This repository demonstrates the absolute limits of Android performance engineering using Kotlin, Jetpack Compose, and AndroidX Media3 (ExoPlayer). 
+A small, offline music player for Android. It lists the music stored on the phone and
+plays it in the background, with the notification, lock screen and Bluetooth controls
+Android users expect. The UI follows the Google Pixel look: Material You colors from the
+wallpaper, the Pixel "squiggly" seek bar and a play button that changes shape.
 
-While most audio players rely on standard SDK implementations, this project was engineered to bypass conventional Android bottlenecks. We focused on eliminating Virtual Machine Garbage Collection (GC) pauses, subverting the Compose recomposition phase, flattening layout rendering for 120Hz locked scrolling, offloading audio decoding to physical DSP silicon, and aggressively flattening Dalvik bytecode.
+Kotlin, Jetpack Compose (Material 3) and AndroidX Media3 (ExoPlayer). Android 6.0+.
 
-## Architectural Overview
+## Features
 
-The application utilizes a unidirectional data flow architecture, strictly separating background I/O operations from the UI rendering thread.
+- **Library**: every music file MediaStore knows about, with title, artist and duration,
+  sorted by title using the phone's language rules. Refreshed whenever the app comes back
+  to the foreground.
+- **Background playback** through a Media3 `MediaSessionService`: media notification,
+  lock screen, Bluetooth and headset buttons. Tapping the notification reopens the app.
+- **Well-behaved audio**: takes audio focus (pauses for calls and other apps), pauses
+  when headphones are unplugged, gapless between tracks, and lets the audio DSP decode
+  (hardware offload) on devices that can do it without breaking gapless playback.
+- **Pixel look**:
+  - Material You dynamic color from the wallpaper on Android 12+, with a matching
+    fallback palette (generated from Pixel's default blue seed) on older versions.
+  - Light and dark mode following the system.
+  - Google Sans, read from the system on Pixel phones (nothing is bundled).
+  - A wavy seek bar that flows while playing and flattens when paused, and a play button
+    that morphs from a circle into a rounded square, as in the Pixel media controls.
+  - Grouped, rounded list rows as in Android 16 settings, and a themed (monochrome)
+    launcher icon.
+
+## Project layout
+
+Everything lives in `app/src/main/java/.../ui/activitys/`:
+
+| File | What it does |
+| --- | --- |
+| `AudioPlayerService.kt` | Owns ExoPlayer and the `MediaSession`. Media3 does the notification and controls. |
+| `AudioViewModel.kt` | Queries MediaStore, connects one `MediaController` to the service and mirrors the player as Compose state. |
+| `MainActivity.kt` | The activity, the permission flow and the track list. |
+| `NowPlaying.kt` | The docked player card: artwork, wavy seek bar, play/pause and skip buttons. |
+| `Theme.kt` | Material You colors, fallback palette and Google Sans typography. |
 
 ```mermaid
 graph TD
-    A["MediaStore / Storage"] -->|"Dispatchers.IO"| B["AudioViewModel"]
-    B -->|"StateFlow"| C["MainActivity"]
-    C -->|"@JvmInline Data"| D["LazyColumn UI"]
-    C -->|"SessionToken"| E["AudioPlayerService"]
-    E -->|"Hardware Offload"| F["ExoPlayer / Media3"]
-    F -->|"Raw Audio Session"| G["DSP Equalizer / BassBoost"]
-    F -->|"Time Updates"| H["derivedStateOf PlayerBar"]
-    H -.->|"GPU Draw Phase"| I["Screen"]
+    MS["MediaStore"] -->|"query on Dispatchers.IO"| VM["AudioViewModel"]
+    VM -->|"Compose state"| UI["Compose UI"]
+    UI -->|"play, pause, seek"| VM
+    VM -->|"MediaController"| S["AudioPlayerService"]
+    S -->|"player events"| VM
+    S --> P["ExoPlayer"]
+    S --> N["Notification, lock screen, Bluetooth"]
 ```
 
----
+## Where the efficiency comes from
 
-## Part 1: Implemented Kotlin & Compose Optimizations
+The app is small, so most of the work is in not doing things.
 
-Below is the exhaustive, comprehensive breakdown of every single performance bottleneck we identified across the entire UI, Audio, Memory, and Build pipelines, and the exact low-level engineering applied to resolve them.
+**The playing position never recomposes the UI.** While music plays, the seek bar needs a
+new position every frame. The position is read inside the seek bar's `Canvas` draw
+lambda, so a change only redraws that one canvas; Compose skips composition and layout.
+The elapsed-time label sits in its own small composable behind `derivedStateOf`, so it
+recomposes once per second. The position comes from `MediaController.currentPosition`,
+which is extrapolated locally from the last player update, so reading it every frame
+costs no IPC. The frame loop stops by itself when the app is in the background, because
+Compose pauses its frame clock when the activity is stopped.
 
-### 1. UI Layout Flattening & 120Hz Rendering
+**One controller, connected once.** The `MediaController` lives in the ViewModel, so it
+survives rotation and is released in `onCleared`. Player state arrives through a single
+`onEvents` listener that copies it into Compose state; writing an unchanged value
+recomposes nothing.
 
-**The Bottleneck:** 
-The original UI utilized heavily nested `Box` and `Column` elements with Compose `weight` modifiers. In Jetpack Compose, `weight` requires the layout engine to perform two measurement passes per frame. During list scrolling, these double-measurements caused severe frame drops, preventing the application from maintaining a locked 120Hz refresh rate.
+**Nothing is loaded until you press play.** Opening the app does not prepare the player,
+so no decoder is created and no notification appears until a song is chosen. The full
+playlist is only sent to the service when it differs from what the player already holds.
 
-**The Solution:**
-We fundamentally restructured the UI hierarchy. We eliminated all `weight` modifiers from the `TrackListItem` rows, replacing them with mathematically exact `padding` and `fillMaxWidth` constraints. The main track list was converted to a fully optimized `LazyColumn` with primitive `contentType` keys. The Compose layout engine now completes its measurement phase in a single `O(1)` pass, guaranteeing locked 120fps rendering regardless of scroll speed.
+**Artwork is decoded once, small.** ExoPlayer already extracts the embedded cover while
+reading the file. The ViewModel decodes those bytes off the main thread at the smallest
+power-of-two scale that still fits the 56dp thumbnail, instead of re-reading the file.
 
-### 2. Phase-Deferred UI Rendering (Zero Recomposition)
+**The audio path stays simple.** No custom buffering (ExoPlayer's defaults suit local
+files) and no audio effects attached to the session, which would stop many devices from
+offloading decoding to the DSP. A local wake lock keeps playback going with the screen off.
 
-**The Bottleneck:** 
-Standard Jetpack Compose UI elements observe state variables. If an audio player updates its playback time 60 times a second, Compose triggers the "Recomposition" phase 60 times a second. This forces the CPU to recalculate the entire UI tree, wasting CPU cycles and draining battery on a screen that is largely static.
+**The build strips what is unused.** R8 runs with optimizations (`proguard-android-optimize.txt`)
+plus resource shrinking. There is no AppCompat, no extended icon set (the six icons are
+vector drawables) and no Palette library. A wildcard baseline profile marks all app code
+for ahead-of-time compilation, alongside the profiles Compose and Media3 ship. The release
+APK is about 2.0 MB.
 
-**The Solution:**
-We implemented State Deferral using `derivedStateOf` and targeted the drawing phase directly. By isolating the ExoPlayer time updates into an animated float that is only read during the `Slider` drawing phase, Compose completely skips the Recomposition and Layout phases. The mathematical calculation for the slider thumb position is piped directly to the GPU. CPU utilization for UI rendering drops to near 0%.
+## Building
 
-### 3. GC-Free Hot Paths & Memory Management
+Requires JDK 17.
 
-**The Bottleneck:**
-The Android Virtual Machine (ART) uses Garbage Collection to manage memory. When standard objects (like a `Track` data class) are instantiated and passed around, they consume heap space. When thousands of tracks are loaded, navigating the list forces the GC to run, physically pausing the application thread for 1-5 milliseconds (micro-stutters).
+```
+./gradlew assembleRelease
+```
 
-**The Solution:**
-We implemented Kotlin `@JvmInline value class` structures for high-frequency data (like `TrackId`). At compile-time, the Kotlin compiler mathematically erases the object wrapper and replaces it with raw primitive bytes (a standard `Long`). At runtime, the JVM does not see an object, meaning there is no memory allocated on the heap, and therefore nothing for the Garbage Collector to clean up. This results in zero memory fragmentation and completely eliminates GC stuttering while scrolling.
+The APK is written to `app/build/outputs/apk/release/app-release.apk`. Unit tests run
+with `./gradlew testReleaseUnitTest`.
 
-### 4. Threading and I/O Optimization
+### CI and signing
 
-**The Bottleneck:**
-Querying the Android `MediaStore` involves IPC (Inter-Process Communication) and SQLite database reads. Running this on the main thread blocks the application lifecycle, causing a visible freeze upon application startup.
+GitHub Actions builds every pull request, and every push to `master` publishes the APK
+as the `latest` release.
 
-**The Solution:**
-We isolated the SQLite cursor query inside an `AudioViewModel` utilizing `Dispatchers.IO`. Furthermore, the memory allocation for the resulting list was optimized by querying the cursor count in advance and pre-sizing the `ArrayList`. This prevents the standard array resizing overhead. The UI boots instantaneously and observes the data via a `StateFlow`.
+By default CI signs with a throwaway debug key that changes on every run, so Android
+refuses to install a new APK over the previous one. To sign every build with the same
+key, create one once:
 
-### 5. Local File Buffer De-Starvation
+```
+keytool -genkeypair -keystore release.jks -alias release -keyalg RSA -keysize 2048 -validity 10000
+```
 
-**The Bottleneck:**
-ExoPlayer is heavily optimized for internet video streaming. Initially, a custom network `LoadControl` was forcing the player to buffer 1.5 seconds of data before it was legally allowed to begin playback. For tiny, instantaneous local audio files, this network logic starved the buffer pipeline, causing the player to freeze in a `READY` state without ever triggering playback.
+and add these repository secrets (Settings > Secrets and variables > Actions):
 
-**The Solution:**
-We stripped the network buffering logic and returned ExoPlayer to its native default brain for file reads, ensuring that local files bypass the network buffer pipeline and decode directly into RAM instantly.
+| Secret | Value |
+| --- | --- |
+| `SIGNING_KEYSTORE_BASE64` | output of `base64 -w0 release.jks` |
+| `SIGNING_STORE_PASSWORD` | the keystore password |
+| `SIGNING_KEY_ALIAS` | `release` |
+| `SIGNING_KEY_PASSWORD` | the key password |
 
-### 6. Hardware Audio Offload (Battery Saver)
+Keep `release.jks` out of the repository. The first APK signed with the new key needs
+the old app to be uninstalled once; after that, updates install normally.
 
-**The Bottleneck:**
-Decoding complex audio formats requires continuous CPU cycles. Keeping the main processor awake during a 3-hour listening session drains the device battery significantly.
+## Left out on purpose
 
-**The Solution:**
-We configured ExoPlayer with `AudioOffloadPreferences`. This API queries the physical silicon of the host device. If the device possesses a dedicated DSP (Digital Signal Processor) that supports the target audio codec, the Android OS intercepts the audio stream and routes it directly to the DSP hardware. The main CPU is allowed to enter a deep sleep state while the music plays, massively improving battery life.
-
-### 7. True Gapless Playback
-
-**The Bottleneck:**
-When transitioning sequentially between tracks, the standard ExoPlayer implementation halts, closes the file descriptor, opens the new file, parses the header, and fills the initial audio buffer. This results in a highly noticeable 50-200ms gap of silence.
-
-**The Solution:**
-We injected a custom `DefaultLoadControl` into the ExoPlayer builder and disabled `pauseAtEndOfMediaItems`. We configured a 30-second back-buffer and instructed the engine to aggressively pre-decode the subsequent track in the playlist while the current track is finishing. This guarantees mathematically instantaneous track transitions.
-
-### 8. Audio Focus Management
-
-**The Bottleneck:**
-Standard media players often clash with other applications (like incoming phone calls or YouTube). Without management, multiple audio streams merge, resulting in distorted audio playback.
-
-**The Solution:**
-We attached `AudioAttributes` to the ExoPlayer initialization with `C.AUDIO_CONTENT_TYPE_MUSIC` and `C.USAGE_MEDIA`. We enabled automatic audio focus management, allowing the Android OS to intelligently pause our audio pipeline if a higher-priority interrupt (like an alarm or phone call) occurs, and smoothly resume it afterward.
-
-### 9. Digital Signal Processing (DSP) Integration
-
-**The Bottleneck:**
-Standard audio players rely on the OEM's default audio mixer settings, which often lack dynamic range or frequency response customization.
-
-**The Solution:**
-We tapped directly into ExoPlayer's hardware audio session ID via an `AnalyticsListener`. We attached Android's native `android.media.audiofx.Equalizer` and `BassBoost` pipelines directly to the raw byte stream. The DSP effects are properly bound to the service lifecycle to prevent memory leaks and audio focus conflicts.
-
-### 10. Dynamic Visual Theming (Palette API)
-
-**The Feature:**
-To elevate the visual fidelity without relying on static assets, we implemented asynchronous album art extraction. Using `MediaMetadataRetriever` on a background coroutine, the application extracts embedded ID3 artwork bytes. The resulting bitmap is processed through the Android `Palette` API. We execute color math (`ColorUtils.colorToHSL`) to ensure the dominant color meets the contrast requirements for a dark theme, and animate the entire application color scheme across an 800ms tween.
-
-### 11. Native Baseline Profiles & R8 Bytecode Stripping
-
-**The Bottleneck:**
-Android applications are compiled into Dalvik bytecode. Upon installation, the OS uses JIT (Just-In-Time) compilation to convert bytecode to native machine code, causing slow initial startup times. Additionally, Kotlin injects massive amounts of safety code (null checks) that bloat the final APK.
-
-**The Solution:**
-*   **Profile Installer:** We integrated the `androidx.profileinstaller` library and engineered a custom `baseline-prof.txt` mapping. This file maps the exact bytecode signatures of the startup and playback paths. Upon installation, the Android package manager reads this file and AOT (Ahead-Of-Time) compiles the critical paths directly into native ARM machine code before the user even opens the app.
-*   **R8 Multi-Pass Stripping:** We wrote extreme `proguard-rules.pro` instructions. The compiler is instructed to run 5 separate optimization passes (`-optimizationpasses 5`). It physically deletes all `Log` calls from the binary, strips all hidden Kotlin null-check assertions (`kotlin.jvm.internal.Intrinsics`), and flattens the class hierarchy. This drastically shrinks the APK footprint and execution time.
-
----
-
-## Part 2: Theoretical Frontiers (Beyond Kotlin)
-
-While the implementations above represent the absolute ceiling of what is possible within the standard Android Virtual Machine (Kotlin) without rewriting the core OS, we have exhaustively mapped the theoretical horizons of mobile audio engineering. If this application were to be ported to unmanaged bare-metal languages, the following optimizations define the bleeding-edge of computer science:
-
-### Bare-Metal Audio Pipelines (C++ / Google Oboe)
-The ultimate latency reduction requires completely abandoning ExoPlayer and the JVM. By rewriting the audio engine in C++ and utilizing the Google Oboe library, the application could request `SharingMode::Exclusive` from the AAudio API. This mathematically locks the rest of the Android OS out of the audio chip, providing 100% direct control over the hardware DAC (Digital-to-Analog Converter) and guaranteeing sub-10ms latency.
-
-### Operating System & Memory Bypassing
-*   **Memory Mapped Files (mmap):** Instead of asking the Android Kernel to copy file bytes into RAM, C++ allows utilizing `MappedByteBuffer` to mathematically map a 100MB FLAC file directly into the application's RAM addressing space, executing file reads at raw bus speeds.
-*   **Zero-Copy I/O:** Executing raw Linux system calls like `splice()` or `sendfile()` commands the kernel to pipe incoming network audio bytes directly into the hardware audio buffer. The data never physically enters the application's memory space.
-*   **Direct SQLite MediaStore Bypassing:** Bypassing the Android ContentResolver IPC overhead entirely by writing C code to directly open and query the raw `/data/data/com.android.providers.media/` SQLite database files.
-
-### Silicon & Hardware Level Tuning
-*   **CPU Core Pinning (Thread Affinity):** Utilizing the Linux `sched_setaffinity` system call to physically lock the audio decoding thread to the Snapdragon processor's absolute fastest "Prime" core with real-time FIFO priority. The OS is legally forbidden from moving the process to a slower battery-saving core.
-*   **ARM NEON Intrinsics (SIMD):** Programming the silicon registers of the processor to execute math on 4 to 8 audio samples simultaneously in a single clock cycle, accelerating DSP mathematics by up to 800%.
-*   **Cache Line Alignment:** Manually calculating the memory addresses of C++ audio variables and inserting blank "padding" bytes to force perfect 64-byte alignment with the Snapdragon's L1 cache, eliminating CPU "False Sharing" thread locks.
-*   **Qualcomm Hexagon DSP (FastRPC):** Writing custom assembly code that executes exclusively on the phone's secretive Hexagon DSP chip, processing audio at near-zero power draw.
-
-### Advanced Audiophile DSP & AI
-*   **HRTF Spatial Audio:** Processing stereo bytes through Head-Related Transfer Functions to mathematically simulate the bounce of sound waves off human ears, creating true 3D spatial audio.
-*   **Neural Upscaling:** Utilizing the Android NNAPI (Neural Networks API) to run Machine Learning models that mathematically reconstruct and upscale missing frequencies in compressed 128kbps MP3s in real-time.
-*   **Bit-Perfect USB Pass-Through:** Utilizing Android 14 APIs to bypass the OS audio mixer entirely, streaming mathematically unaltered 64-bit float raw bytes directly to external audiophile DAC hardware.
-
----
+- **Equalizer and bass boost.** The earlier version attached both at a fixed setting
+  with no way to change them. They colored the sound and, on many devices, prevented
+  hardware offload.
+- **Colors from album art.** The app uses the wallpaper colors instead, like other Pixel
+  apps. The artwork still shows in the player card.
+- **A native (C++/Oboe) audio engine.** Exclusive, low-latency audio matters for
+  instruments and games, not for playing files. ExoPlayer already plays through the
+  platform's offload path where the hardware has one.
 
 ## License
 

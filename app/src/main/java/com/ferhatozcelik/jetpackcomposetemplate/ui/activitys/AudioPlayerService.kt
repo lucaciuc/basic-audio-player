@@ -1,115 +1,69 @@
 package com.ferhatozcelik.jetpackcomposetemplate.ui.activitys
 
-import android.media.audiofx.BassBoost
-import android.media.audiofx.Equalizer
+import android.app.PendingIntent
+import android.content.Intent
+import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
-import androidx.media3.common.TrackSelectionParameters
-import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 
+/**
+ * Owns the player. Media3 provides the media notification, lock screen and Bluetooth
+ * controls, and keeps playback going after the activity is gone. When the app is
+ * swiped away, the default [onTaskRemoved] stops the service unless music is playing.
+ */
 class AudioPlayerService : MediaSessionService() {
-    private var mediaSession: MediaSession? = null
-    private lateinit var player: ExoPlayer
-    private var equalizer: Equalizer? = null
-    private var bassBoost: BassBoost? = null
+    private var session: MediaSession? = null
 
-    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    @OptIn(UnstableApi::class)
     override fun onCreate() {
         super.onCreate()
-
-        // 1. Audio Focus Management
-        val audioAttributes = AudioAttributes.Builder()
-            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-            .setUsage(C.USAGE_MEDIA)
-            .build()
-
-        // Phase 8: Gapless Playback - Configure LoadControl to aggressively
-        // pre-buffer the next track while the current one is still playing.
-        // back_buffer keeps decoded audio in RAM so seeking backwards is instant.
-        val loadControl = DefaultLoadControl.Builder()
-            .setBackBuffer(
-                /* backBufferDurationMs = */ 30_000,    // Keep 30s of played audio in RAM
-                /* retainBackBufferFromKeyframe = */ true
+        val player = ExoPlayer.Builder(this)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build(),
+                /* handleAudioFocus = */ true
             )
+            .setHandleAudioBecomingNoisy(true) // Pause when headphones are unplugged
+            .setWakeMode(C.WAKE_MODE_LOCAL) // Keep decoding with the screen off
             .build()
 
-        player = ExoPlayer.Builder(this)
-            .setAudioAttributes(audioAttributes, true)
-            .setWakeMode(C.WAKE_MODE_LOCAL)
-            .setLoadControl(loadControl)
-            .build()
-
-        // Phase 8: Tell ExoPlayer to NOT pause between tracks (gapless)
-        player.pauseAtEndOfMediaItems = false
-
-        // Enable Hardware Audio Offload (Battery Saver)
-        player.trackSelectionParameters = player.trackSelectionParameters
-            .buildUpon()
+        // Let the audio DSP decode so the CPU can sleep, but only on devices that can
+        // also offload gapless transitions, so albums keep playing without gaps.
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setAudioOffloadPreferences(
-                androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences.Builder()
-                    .setAudioOffloadMode(androidx.media3.common.TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
+                AudioOffloadPreferences.Builder()
+                    .setAudioOffloadMode(AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
+                    .setIsGaplessSupportRequired(true)
                     .build()
             )
             .build()
 
-        // Phase 4: Attach Equalizer and BassBoost to the audio session
-        player.addAnalyticsListener(object : AnalyticsListener {
-            override fun onAudioSessionIdChanged(
-                eventTime: AnalyticsListener.EventTime,
-                audioSessionId: Int
-            ) {
-                // Release previous instances to prevent leaks
-                releaseAudioEffects()
-                if (audioSessionId != 0) {
-                    try {
-                        equalizer = Equalizer(0, audioSessionId).apply {
-                            enabled = true
-                            // Apply a pleasant default - users can customize via UI
-                        }
-                        bassBoost = BassBoost(0, audioSessionId).apply {
-                            enabled = true
-                            setStrength(200) // Subtle bass enhancement (0-1000)
-                        }
-                    } catch (_: Exception) {
-                        // Some devices don't support audio effects
-                    }
-                }
-            }
-        })
+        // Tapping the notification brings the existing task back, like the launcher does.
+        val openApp = Intent(this, MainActivity::class.java)
+            .setAction(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-        mediaSession = MediaSession.Builder(this, player).build()
+        session = MediaSession.Builder(this, player)
+            .setSessionActivity(PendingIntent.getActivity(this, 0, openApp, PendingIntent.FLAG_IMMUTABLE))
+            .build()
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
-        return mediaSession
-    }
-
-    override fun onTaskRemoved(rootIntent: android.content.Intent?) {
-        super.onTaskRemoved(rootIntent)
-        player.stop()
-        stopSelf()
-    }
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = session
 
     override fun onDestroy() {
-        releaseAudioEffects()
-        mediaSession?.run {
+        session?.run {
             player.release()
             release()
-            mediaSession = null
         }
+        session = null
         super.onDestroy()
-    }
-
-    private fun releaseAudioEffects() {
-        try {
-            equalizer?.release()
-            equalizer = null
-            bassBoost?.release()
-            bassBoost = null
-        } catch (_: Exception) { }
     }
 }

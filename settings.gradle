@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "jetpack-compose-template"
+rootProject.name = "basic-audio-player"
 include ':app'
