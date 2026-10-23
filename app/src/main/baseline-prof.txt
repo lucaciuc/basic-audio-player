@@ -1,4 +1,9 @@
 # The app's own code is small and runs at startup, so all of it is precompiled at
-# install time. Compose, Media3 and the other libraries ship their own profiles.
+# install time. Compose and the other libraries ship their own profiles.
 HSPLcom/ferhatozcelik/jetpackcomposetemplate/**->**(**)**
 Lcom/ferhatozcelik/jetpackcomposetemplate/**;
+
+# Media3 ships no profile, so after every install its file parsing, decoding and
+# session code would start out interpreted. Precompile it too.
+HSPLandroidx/media3/**->**(**)**
+Landroidx/media3/**;

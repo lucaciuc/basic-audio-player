@@ -123,7 +123,7 @@ class AudioViewModel(app: Application) : AndroidViewModel(app) {
         positionMs = player.currentPosition
     }
 
-    /** Called by the UI every frame while playing. The controller extrapolates the position locally. */
+    /** Called by the UI about 30 times a second while playing. The controller extrapolates the position locally. */
     fun refreshPosition() {
         controller?.let { positionMs = it.currentPosition }
     }

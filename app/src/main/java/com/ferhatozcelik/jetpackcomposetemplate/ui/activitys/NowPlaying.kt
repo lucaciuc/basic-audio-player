@@ -59,6 +59,7 @@ import kotlin.math.PI
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlinx.coroutines.delay
 
 /** Docked player in the style of the Pixel media controls. */
 @Composable
@@ -66,11 +67,17 @@ fun NowPlayingCard(vm: AudioViewModel, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val playing = !vm.showPlay
 
-    // The controller extrapolates the position locally, so reading it once per frame
-    // costs nothing. Frames stop while the app is in the background.
+    // About 30 position updates a second (the delay plus the wait for the next frame, on 60,
+    // 90 and 120 Hz screens), which also move the wave. That is smooth for this slow motion and
+    // draws a quarter of the frames a 120 Hz screen would. Each read is cheap (the controller
+    // extrapolates the position locally), and withFrameNanos waits while the app is in the
+    // background, so the loop stops there.
     if (playing) {
         LaunchedEffect(vm) {
-            while (true) withFrameNanos { vm.refreshPosition() }
+            while (true) {
+                delay(TICK_MS)
+                withFrameNanos { vm.refreshPosition() }
+            }
         }
     }
     Column(
@@ -108,6 +115,7 @@ fun NowPlayingCard(vm: AudioViewModel, modifier: Modifier = Modifier) {
             Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
                 WavySeekBar(
                     progress = { if (vm.durationMs > 0) vm.positionMs.toFloat() / vm.durationMs else 0f },
+                    phase = { vm.positionMs * WAVES_PER_MS % 1f },
                     playing = playing,
                     onSeek = vm::seekTo,
                 )
@@ -171,12 +179,13 @@ private fun PlayPauseButton(showPlay: Boolean, onClick: () -> Unit) {
 
 /**
  * The Pixel "squiggly" seek bar: the played part is a wave that flows while music plays
- * and flattens when paused. [progress] is only read while drawing, so position updates
- * and the wave animation redraw this canvas without recomposing anything.
+ * and flattens when paused. [progress] and [phase] (in wavelengths) are only read while
+ * drawing, so position updates redraw this canvas without recomposing anything.
  */
 @Composable
 private fun WavySeekBar(
     progress: () -> Float,
+    phase: () -> Float,
     playing: Boolean,
     onSeek: (Float) -> Unit,
     modifier: Modifier = Modifier,
@@ -188,18 +197,8 @@ private fun WavySeekBar(
     val description = stringResource(R.string.seek)
 
     val amplitude = animateFloatAsState(if (playing) 1f else 0f, tween(400), label = "waveAmplitude")
-    val phase = remember { mutableFloatStateOf(0f) } // In wavelengths, 0..1
-    if (playing) {
-        LaunchedEffect(Unit) {
-            var last = withFrameNanos { it }
-            while (true) withFrameNanos { now ->
-                phase.floatValue = (phase.floatValue + (now - last) * WAVES_PER_NANO) % 1f
-                last = now
-            }
-        }
-    }
     val drag = remember { mutableFloatStateOf(-1f) } // Fraction while the finger is down
-    // Accessibility reads whole percents, so it is not refreshed every frame.
+    // Accessibility reads whole percents, so it is not refreshed on every position update.
     val percent = remember(progress) { derivedStateOf { (progress().coerceIn(0f, 1f) * 100).roundToInt() } }
     val wave = remember { Path() }
 
@@ -245,7 +244,7 @@ private fun WavySeekBar(
             if (x - gap > start) {
                 val amp = 3.dp.toPx() * amplitude.value
                 val k = TWO_PI / 32.dp.toPx() // One wave every 32dp
-                val shift = phase.floatValue * TWO_PI
+                val shift = phase() * TWO_PI
                 val step = 2.dp.toPx()
                 val waveEnd = x - gap
                 wave.rewind()
@@ -265,7 +264,8 @@ private fun WavySeekBar(
 
 private val TRACK_INSET = 6.dp
 private const val TWO_PI = (2 * PI).toFloat()
-private const val WAVES_PER_NANO = 0.6f / 1_000_000_000f
+private const val TICK_MS = 25L
+private const val WAVES_PER_MS = 0.6f / 1000f
 
 /** 0:42, 3:07, 1:02:03 */
 fun formatTime(ms: Long): String {
